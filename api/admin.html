@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Idea Box: Teacher</title>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Caveat:wght@500;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;font-family:"Baloo 2",system-ui,sans-serif;color:#111;background:radial-gradient(circle at 10% 5%,#8fbf8a 0,transparent 32%),radial-gradient(circle at 95% 95%,#4f8a58 0,transparent 38%),#F3EDDA}
+main{max-width:980px;margin:0 auto;padding:28px 18px 50px}
+h1{margin:0 0 16px;font-weight:800;font-size:2.2rem}
+.lock{max-width:340px;display:grid;gap:12px}
+input{font:600 1.1rem "Baloo 2",sans-serif;padding:11px 14px;border-radius:12px;border:2px solid #111;background:#FBF6E4;color:#111}
+button{font:700 1rem "Baloo 2",sans-serif;background:#111;color:#F3EDDA;border:0;border-radius:999px;padding:8px 20px;cursor:pointer}
+button.ghost{background:transparent;color:#111;border:2px solid #111}
+button:focus-visible,input:focus-visible{outline:3px solid #111;outline-offset:2px}
+.bar{display:flex;gap:10px;align-items:center;margin-bottom:22px;flex-wrap:wrap}
+.bar span{font-weight:700;margin-right:auto}
+.wall{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:22px}
+.card{background:var(--n);color:#111;border:2px solid #111;padding:16px;border-radius:4px 4px 14px 4px;min-height:170px;display:flex;flex-direction:column;box-shadow:5px 6px 0 #111;transform:rotate(var(--r))}
+.card p{margin:0 0 10px;flex:1;font:700 1.5rem/1.2 Caveat,"Comic Sans MS",cursive;white-space:pre-wrap;overflow-wrap:anywhere}
+.card small{display:flex;justify-content:space-between;align-items:center;font-weight:600;opacity:.85}
+.card button{background:#111;color:#F3EDDA;padding:3px 12px;font-size:.85rem}
+#err{color:#8a1c1c;font-weight:700;min-height:1.4em}
+.hide{display:none}
+</style>
+</head>
+<body>
+<main>
+ <h1 id="title">Teacher login 🔑</h1>
+ <div id="note1" class="hide" style="max-width:420px;font-weight:600"></div>
+ <form class="lock hide" id="setup">
+  <p style="margin:0;font-weight:600">First time here. Create your passcode. You can only do this once, so remember it.</p>
+  <input id="n1" type="password" placeholder="New passcode (6+ characters)" autocomplete="new-password" aria-label="New passcode">
+  <input id="n2" type="password" placeholder="Type it again" autocomplete="new-password" aria-label="Confirm passcode">
+  <button>Save passcode</button>
+ </form>
+ <form class="lock hide" id="lock">
+  <input id="code" type="password" placeholder="Passcode" autocomplete="current-password" aria-label="Passcode">
+  <button>Open the box</button>
+ </form>
+ <div id="err" role="status"></div>
+ <section id="panel" class="hide">
+  <div class="bar"><span id="count"></span><button class="ghost" id="refresh">Refresh</button><button class="ghost" id="out">Lock</button></div>
+  <div class="wall" id="wall"></div>
+ </section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let code=sessionStorage.getItem('ibcode')||'';
+const hdr=()=>({'x-admin-code':code,'Content-Type':'application/json'});
+const show=(...ids)=>['setup','lock','panel','note1'].forEach(i=>$(i).classList.toggle('hide',!ids.includes(i)));
+
+async function start(){
+  $('err').textContent='';
+  let st;
+  try{st=await (await fetch('/api/status')).json()}catch(e){$('err').textContent='Could not reach the site. Refresh and try again.';return}
+  if(!st.db){
+    show('note1');
+    $('note1').textContent=st.reason==='error'
+      ?"The database keys were found, but the connection failed. Details: "+st.detail+". Check the keys in Vercel match your Upstash database, then redeploy."
+      :"No database keys were found by this deployment. Redeploy in Vercel so it picks them up. Variable names it can see: "+((st.seen&&st.seen.join(', '))||'none')+".";
+    return;
+  }
+  if(!st.passcode){show('setup');return}
+  if(code){load()}else{show('lock')}
+}
+
+$('setup').onsubmit=async e=>{
+  e.preventDefault();
+  const a=$('n1').value,b=$('n2').value;
+  if(a.length<6){$('err').textContent='Use at least 6 characters.';return}
+  if(a!==b){$('err').textContent="The two passcodes don't match.";return}
+  const r=await fetch('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:a})});
+  if(r.ok){code=a;sessionStorage.setItem('ibcode',a);load()}
+  else if(r.status===409){$('err').textContent='A passcode has already been created. Enter it instead.';start()}
+  else{$('err').textContent="Couldn't save the passcode. Check the database is connected."}
+};
+
+async function load(){
+  const r=await fetch('/api/ideas',{headers:hdr()});
+  if(r.status===401){
+    sessionStorage.removeItem('ibcode');code='';show('lock');
+    $('err').textContent=$('code').value?'Wrong passcode. Try again.':'';return;
+  }
+  if(!r.ok){$('err').textContent='Could not load notes. Check the database is connected.';return}
+  $('err').textContent='';show('panel');$('title').textContent='Your ideas 💡';
+  const {ideas}=await r.json();
+  $('count').textContent=ideas.length+(ideas.length===1?' idea':' ideas')+' in the box';
+  const wall=$('wall');wall.innerHTML='';
+  if(!ideas.length){wall.textContent='The box is empty for now.'}
+  ideas.forEach((i,k)=>{
+    const c=document.createElement('div');c.className='card';
+    c.style.setProperty('--n',i.color);c.style.setProperty('--r',((k%5)-2)*0.9+'deg');
+    const p=document.createElement('p');p.textContent=i.text;
+    const f=document.createElement('small');
+    const d=document.createElement('span');d.textContent=new Date(i.ts).toLocaleString([],{dateStyle:'medium',timeStyle:'short'});
+    const x=document.createElement('button');x.textContent='Delete';
+    x.onclick=async()=>{if(!confirm('Delete this note?'))return;await fetch('/api/delete',{method:'POST',headers:hdr(),body:JSON.stringify({id:i.id})});load()};
+    f.append(d,x);c.append(p,f);wall.append(c);
+  });
+}
+$('lock').onsubmit=e=>{e.preventDefault();code=$('code').value;sessionStorage.setItem('ibcode',code);load()};
+$('refresh').onclick=load;
+$('out').onclick=()=>{sessionStorage.removeItem('ibcode');code='';$('code').value='';$('title').textContent='Teacher login 🔑';show('lock')};
+start();
+</script>
+</body>
+</html>
