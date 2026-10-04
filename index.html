@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Idea Box</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Caveat:wght@500;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;font-family:"Baloo 2",system-ui,sans-serif;color:#111;
+ background:radial-gradient(circle at 12% 8%,#8fbf8a 0,transparent 34%),radial-gradient(circle at 92% 88%,#4f8a58 0,transparent 40%),#F3EDDA}
+main{max-width:900px;margin:0 auto;padding:28px 18px 50px;overflow-x:hidden}
+h1{font-size:clamp(2rem,6vw,3.2rem);margin:0;font-weight:800;line-height:1.1}
+.sub{margin:6px 0 26px;font-size:1.15rem;opacity:.85}
+.stage{display:grid;gap:34px;align-items:end;justify-items:center}
+@media(min-width:760px){.stage{grid-template-columns:1fr 1fr;align-items:center}}
+.pad{display:flex;flex-direction:column;align-items:center;gap:14px}
+.note{position:relative;z-index:3;width:min(320px,84vw);height:260px;background:var(--n,#FBF6E4);color:#111;border:2px solid #111;border-radius:6px 6px 14px 6px;
+ box-shadow:6px 8px 0 #111;transform:rotate(-2deg);touch-action:none;display:flex;flex-direction:column}
+.note.lift{box-shadow:10px 14px 0 #111}
+.tape{height:38px;cursor:grab;display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:700;background:#111;color:#F3EDDA;border-radius:3px 3px 0 0;user-select:none;touch-action:none}
+.tape:active{cursor:grabbing}
+.note textarea{flex:1;width:100%;border:0;background:transparent;resize:none;padding:12px 16px;font:700 1.55rem/1.25 Caveat,"Comic Sans MS",cursive;color:#111;outline:0}
+.note textarea::placeholder{color:rgba(17,17,17,.45)}
+.note.shake{animation:shake .4s}
+@keyframes shake{25%{margin-left:-10px}75%{margin-left:10px}}
+.note.pop{animation:pop .4s cubic-bezier(.3,1.6,.5,1)}
+@keyframes pop{from{transform:scale(.3) rotate(-2deg);opacity:0}}
+.swatches{display:flex;gap:12px}
+.swatches button{width:34px;height:34px;border-radius:50%;border:2px solid #111;background:var(--c);cursor:pointer}
+.swatches button[aria-pressed=true]{box-shadow:0 0 0 3px #F3EDDA,0 0 0 5px #111;transform:scale(1.1)}
+.go{font:700 1.05rem "Baloo 2",sans-serif;background:#111;color:#F3EDDA;border:0;border-radius:999px;padding:8px 22px;cursor:pointer}
+.go:disabled{opacity:.6}
+button:focus-visible,textarea:focus-visible{outline:3px solid #111;outline-offset:3px}
+.boxwrap{position:relative;z-index:4;width:min(300px,80vw);text-align:center;transition:transform .2s}
+.lid{height:34px;width:104%;margin-left:-2%;background:#3F6B47;border:3px solid #111;border-radius:12px 12px 4px 4px;position:relative}
+.slit{position:absolute;left:50%;top:8px;width:56%;height:10px;transform:translateX(-50%);background:#111;border-radius:6px}
+.front{height:210px;background:repeating-linear-gradient(90deg,#8fbf8a 0 22px,#a6cf9f 22px 44px);border:3px solid #111;border-top:0;border-radius:0 0 16px 16px;box-shadow:6px 8px 0 #111;display:grid;place-items:center}
+.label{background:#F3EDDA;color:#111;font-weight:800;font-size:1.5rem;padding:8px 20px;border:2px solid #111;border-radius:10px;transform:rotate(2deg);box-shadow:3px 3px 0 #111}
+.boxwrap.hot{transform:scale(1.04)}
+.boxwrap.hot .lid{background:#5E9467;box-shadow:0 0 0 4px #F3EDDA,0 0 0 7px #111}
+#msg{min-height:1.6em;text-align:center;font-weight:700;margin-top:20px;font-size:1.1rem}
+footer{text-align:center;margin-top:30px}
+footer a{color:#111;opacity:.7;font-size:.9rem}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<main>
+ <h1>Got an idea? 💡</h1>
+ <p class="sub">Write it on a note, then drag the note into the ballot box. No names, ever.</p>
+ <div class="stage">
+  <div class="pad">
+   <div class="note" id="note">
+    <div class="tape" id="tape">✋ grab here to drag</div>
+    <textarea id="text" maxlength="500" placeholder="Write your idea here..." aria-label="Your idea"></textarea>
+   </div>
+   <div class="swatches" id="sw" role="group" aria-label="Note colour"></div>
+   <button class="go" id="go">Drop it in the box</button>
+  </div>
+  <div class="boxwrap" id="box">
+   <div class="lid"><div class="slit" id="slit"></div></div>
+   <div class="front"><div class="label">IDEAS</div></div>
+  </div>
+ </div>
+ <div id="msg" role="status" aria-live="polite"></div>
+ <footer><a href="/admin.html">Teacher login</a></footer>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const note=$('note'),tape=$('tape'),ta=$('text'),box=$('box'),slit=$('slit'),msg=$('msg'),go=$('go');
+const COLORS=['#FBF6E4','#CFE3C4','#9CC58F','#6FA270','#E9DDB8'];
+let color=COLORS[0],start=null,cur={x:0,y:0},busy=false;
+
+COLORS.forEach((c,i)=>{
+  const b=document.createElement('button');
+  b.style.setProperty('--c',c);b.setAttribute('aria-label','Note colour '+(i+1));b.setAttribute('aria-pressed',i===0);
+  b.onclick=()=>{color=c;note.style.setProperty('--n',c);[...$('sw').children].forEach(x=>x.setAttribute('aria-pressed',x===b))};
+  $('sw').appendChild(b);
+});
+
+const centre=r=>({x:r.left+r.width/2,y:r.top+r.height/2});
+function over(){
+  const n=centre(note.getBoundingClientRect()),b=box.getBoundingClientRect();
+  return n.x>b.left&&n.x<b.right&&n.y>b.top&&n.y<b.bottom;
+}
+function place(x,y){cur={x,y};note.style.transform=`translate(${x}px,${y}px) rotate(${x/40-2}deg)`}
+function back(){note.style.transition='transform .4s cubic-bezier(.3,1.6,.5,1)';note.style.transform='';cur={x:0,y:0}}
+
+tape.addEventListener('pointerdown',e=>{
+  if(busy)return;
+  tape.setPointerCapture(e.pointerId);
+  start={x:e.clientX-cur.x,y:e.clientY-cur.y};
+  note.style.transition='none';note.classList.add('lift');
+});
+tape.addEventListener('pointermove',e=>{
+  if(!start)return;
+  place(e.clientX-start.x,e.clientY-start.y);
+  box.classList.toggle('hot',over());
+});
+tape.addEventListener('pointerup',()=>{
+  if(!start)return;
+  start=null;note.classList.remove('lift');
+  const hit=over();box.classList.remove('hot');
+  hit?drop():back();
+});
+go.onclick=drop;
+
+async function drop(){
+  if(busy)return;
+  const text=ta.value.trim();
+  if(!text){
+    msg.textContent='Write your idea first, then drop it in.';
+    note.classList.add('shake');setTimeout(()=>note.classList.remove('shake'),400);
+    back();ta.focus();return;
+  }
+  busy=true;go.disabled=true;msg.textContent='';
+  const n=centre(note.getBoundingClientRect()),s=centre(slit.getBoundingClientRect());
+  note.style.zIndex=1;
+  note.style.transition='transform .7s ease-in,opacity .7s ease-in';
+  note.style.transform=`translate(${cur.x+s.x-n.x}px,${cur.y+s.y-n.y}px) scale(.12) rotate(8deg)`;
+  note.style.opacity='0';
+  let ok=false,err='';
+  try{
+    const r=await fetch('/api/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,color})});
+    ok=r.ok;
+    if(!ok){try{err=(await r.json()).error}catch(e){}}
+  }catch(e){}
+  await new Promise(r=>setTimeout(r,720));
+  note.style.transition='none';note.style.transform='';note.style.zIndex=3;note.style.opacity='1';cur={x:0,y:0};
+  if(ok){
+    ta.value='';msg.textContent='Dropped in the box. Thank you! 🎉';
+    note.classList.add('pop');setTimeout(()=>note.classList.remove('pop'),450);
+  }else{
+    msg.textContent=err==='no-db'?"The box isn't finished being set up yet. Ask your teacher to connect the database.":"That didn't go through. Your note is still here, so try dropping it again.";
+  }
+  busy=false;go.disabled=false;
+}
+</script>
+</body>
+</html>
